@@ -191,6 +191,15 @@ defmodule MyXQLTest do
         MyXQL.query(c.conn, "SELECT ? * ?", [1], query_type: :binary)
       end
     end
+
+    test "text query with multiple results", c do
+      [result1, result2, result3] =
+        MyXQL.query_multi!(c.conn, "SELECT 1; SELECT 2; SELECT 3")
+
+      assert result1.rows == [[1]]
+      assert result2.rows == [[2]]
+      assert result3.rows == [[3]]
+    end
   end
 
   describe "prepared statements" do
@@ -397,20 +406,21 @@ defmodule MyXQLTest do
     end
   end
 
-  # TODO:
-  # describe "stored procedures" do
-  #   setup [:connect, :truncate]
+  describe "stored procedures" do
+    setup [:connect, :truncate]
 
-  #   test "multi-resultset in text protocol", c do
-  #     MyXQL.query!(c.conn, "CALL multi();", [])
-  #     |> IO.inspect()
-  #   end
+    @tag :skip
+    test "multi-resultset in text protocol", c do
+      MyXQL.query!(c.conn, "CALL multi();", [])
+      |> IO.inspect()
+    end
 
-  #   test "multi-resultset in binary protocol", c do
-  #     MyXQL.query!(c.conn, "CALL multi();", [])
-  #     |> IO.inspect()
-  #   end
-  # end
+    @tag :skip
+    test "multi-resultset in binary protocol", c do
+      MyXQL.query!(c.conn, "CALL multi();", [])
+      |> IO.inspect()
+    end
+  end
 
   defp assert_start_and_killed(opts) do
     Process.flag(:trap_exit, true)

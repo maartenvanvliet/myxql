@@ -141,13 +141,23 @@ defmodule MyXQL.Protocol do
     end
   end
 
-  def handle_execute(%Query{type: :text, statement: statement} = query, [], _opts, s) do
+  def handle_execute(%Query{type: :text, statement: statement} = query, [], _opts, state) do
     data = encode_com_query(statement)
-    {:ok, data} = send_and_recv(s, data)
+    :ok = sock_send(state, data)
+    get_results(query, state)
+  end
+
+  defp get_results(query, state) do
+    get_results(query, state, [])
+  end
+
+  defp get_results(query, state, results) do
+    {:ok, data} = sock_recv(state)
 
     case decode_com_query_response(data) do
       ok_packet(last_insert_id: last_insert_id, status_flags: status_flags) ->
-        {:ok, query, %MyXQL.Result{last_insert_id: last_insert_id}, put_status(s, status_flags)}
+        {:ok, query, %MyXQL.Result{last_insert_id: last_insert_id},
+         put_status(state, status_flags)}
 
       resultset(
         column_definitions: column_definitions,
@@ -157,10 +167,16 @@ defmodule MyXQL.Protocol do
       ) ->
         columns = Enum.map(column_definitions, &elem(&1, 1))
         result = %MyXQL.Result{columns: columns, num_rows: num_rows, rows: rows}
-        {:ok, query, result, put_status(s, status_flags)}
+        state = put_status(state, status_flags)
+
+        if :server_more_results_exists in list_status_flags(status_flags) do
+          get_results(query, state, [result | results])
+        else
+          {:ok, query, Enum.reverse([result | results]), state}
+        end
 
       err_packet(error_message: message) ->
-        {:error, %MyXQL.Error{message: message}, s}
+        {:error, %MyXQL.Error{message: message}, state}
     end
   end
 

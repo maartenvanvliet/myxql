@@ -5,28 +5,17 @@ defmodule MyXQL do
 
   def query(conn, statement, params \\ [], opts \\ [])
       when is_binary(statement) or is_list(statement) do
-    query_type = Keyword.get(opts, :query_type, :binary)
-
-    query = %MyXQL.Query{
-      name: "",
-      ref: make_ref(),
-      statement: statement,
-      type: query_type
-    }
-
-    return =
-      case query_type do
-        :text ->
-          query = %{query | num_params: 0}
-          DBConnection.execute(conn, query, params, opts)
-
-        :binary ->
-          DBConnection.prepare_execute(conn, query, params, opts)
-      end
-
-    case return do
-      {:ok, _query, result} ->
+    case run_query(conn, statement, params, opts) do
+      {:ok, _query, [%MyXQL.Result{} = result]} ->
         {:ok, result}
+
+      # TODO: handle multiple results in binary protocol
+      {:ok, _query, %MyXQL.Result{} = result} ->
+        {:ok, result}
+
+      {:ok, query, results} when is_list(results) ->
+        raise ArgumentError,
+              "query #{inspect(query)} returned #{length(results)} results. Use MyXQL.query_multi/4 handle multiple results."
 
       {:error, _} = error ->
         error
@@ -37,6 +26,44 @@ defmodule MyXQL do
     case query(conn, statement, params, opts) do
       {:ok, result} -> result
       {:error, exception} -> raise exception
+    end
+  end
+
+  def query_multi(conn, statement, params \\ [], opts \\ [])
+      when is_binary(statement) or is_list(statement) do
+    case run_query(conn, statement, params, opts) do
+      {:ok, _query, results} when is_list(results) ->
+        {:ok, results}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  def query_multi!(conn, statement, params \\ [], opts \\ []) do
+    case query_multi(conn, statement, params, opts) do
+      {:ok, results} -> results
+      {:error, exception} -> raise exception
+    end
+  end
+
+  defp run_query(conn, statement, params, opts) do
+    query_type = Keyword.get(opts, :query_type, :binary)
+
+    query = %MyXQL.Query{
+      name: "",
+      ref: make_ref(),
+      statement: statement,
+      type: query_type
+    }
+
+    case query_type do
+      :text ->
+        query = %{query | num_params: 0}
+        DBConnection.execute(conn, query, params, opts)
+
+      :binary ->
+        DBConnection.prepare_execute(conn, query, params, opts)
     end
   end
 
