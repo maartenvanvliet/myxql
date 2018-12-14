@@ -194,11 +194,16 @@ defmodule MyXQLTest do
 
     test "text query with multiple results", c do
       [result1, result2, result3] =
-        MyXQL.query_multi!(c.conn, "SELECT 1; SELECT 2; SELECT 3")
+        MyXQL.query_multi!(c.conn, "SELECT 1; SELECT 2; SELECT 3", [], query_type: :text)
 
       assert result1.rows == [[1]]
       assert result2.rows == [[2]]
       assert result3.rows == [[3]]
+    end
+
+    test "text query with stored procedure and single result", c do
+      result = MyXQL.query!(c.conn, "CALL single()", [], query_type: :text)
+      assert result.rows == [[1]]
     end
   end
 
@@ -403,22 +408,6 @@ defmodule MyXQLTest do
                MyXQL.transaction(conn2, fn conn ->
                  MyXQL.stream(conn, query) |> Enum.to_list()
                end)
-    end
-  end
-
-  describe "stored procedures" do
-    setup [:connect, :truncate]
-
-    @tag :skip
-    test "multi-resultset in text protocol", c do
-      MyXQL.query!(c.conn, "CALL multi();", [])
-      |> IO.inspect()
-    end
-
-    @tag :skip
-    test "multi-resultset in binary protocol", c do
-      MyXQL.query!(c.conn, "CALL multi();", [])
-      |> IO.inspect()
     end
   end
 

@@ -156,8 +156,10 @@ defmodule MyXQL.Protocol do
 
     case decode_com_query_response(data) do
       ok_packet(last_insert_id: last_insert_id, status_flags: status_flags) ->
-        {:ok, query, %MyXQL.Result{last_insert_id: last_insert_id},
-         put_status(state, status_flags)}
+        result = %MyXQL.Result{last_insert_id: last_insert_id}
+        results = if results == [], do: [result], else: results
+
+        {:ok, query, results, put_status(state, status_flags)}
 
       resultset(
         column_definitions: column_definitions,

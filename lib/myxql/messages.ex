@@ -119,8 +119,25 @@ defmodule MyXQL.Messages do
   defrecord :packet, [:payload_length, :sequence_id, :payload]
 
   def decode_packet(data) do
-    <<payload_length::size(24), sequence_id::size(8), payload::binary>> = data
+    <<payload_length::int(3), sequence_id::int(1), payload::binary>> = data
     packet(payload_length: payload_length, sequence_id: sequence_id, payload: payload)
+  end
+
+  def decode_packets(data) do
+    decode_packets(data, [])
+  end
+
+  defp decode_packets(
+         <<payload_length::int(3), sequence_id::int(1), payload::bytes-size(payload_length),
+           rest::binary>>,
+         acc
+       ) do
+    packet = packet(payload_length: payload_length, sequence_id: sequence_id, payload: payload)
+    decode_packets(rest, [packet | acc])
+  end
+
+  defp decode_packets("", acc) do
+    Enum.reverse(acc)
   end
 
   def take_packet(data) do
@@ -377,21 +394,25 @@ defmodule MyXQL.Messages do
 
   # https://dev.mysql.com/doc/internals/en/com-query-response.html#packet-COM_QUERY_Response
   def decode_com_query_response(data) do
-    packet(payload: payload) = decode_packet(data)
-
-    case payload do
-      <<0x00, _::binary>> ->
+    case decode_packets(data) do
+      [packet(payload: <<0x00, _::binary>> = payload)] ->
         decode_ok_packet(payload)
 
-      <<0xFF, _::binary>> ->
+      [packet(payload: <<0xFF, _::binary>> = payload)] ->
         decode_err_packet(payload)
 
-      rest ->
-        {column_count, rest} = take_length_encoded_integer(rest)
-        {column_definitions, rest} = decode_column_definitions(rest, column_count, [])
+      [packet(payload: column_count_payload) | rest] ->
+        column_count = decode_length_encoded_integer(column_count_payload)
+        {column_definition_packets, row_packets} = Enum.split(rest, column_count)
+
+        column_definitions =
+          for packet(payload: payload) <- column_definition_packets do
+            {column_definition, ""} = do_decode_column_definition41(payload)
+            column_definition
+          end
 
         {row_count, rows, warning_count, status_flags} =
-          decode_text_resultset_rows(rest, column_definitions)
+          decode_text_rows(row_packets, column_definitions)
 
         resultset(
           column_count: column_count,
@@ -402,6 +423,21 @@ defmodule MyXQL.Messages do
           status_flags: status_flags
         )
     end
+  end
+
+  defp decode_text_rows(row_packets, column_definitions) do
+    decode_text_rows(row_packets, column_definitions, 0, [])
+  end
+
+  # EOF packet
+  defp decode_text_rows([packet(payload: payload)], _column_definitions, row_count, acc) do
+    <<0xFE, warning_count::int(2), status_flags::int(2), 0::int(2)>> = payload
+    {row_count, Enum.reverse(acc), warning_count, status_flags}
+  end
+
+  defp decode_text_rows([packet(payload: payload) | rest], column_definitions, row_count, acc) do
+    {row, ""} = decode_text_resultset_row(payload, column_definitions)
+    decode_text_rows(rest, column_definitions, row_count + 1, [row | acc])
   end
 
   # https://dev.mysql.com/doc/internals/en/com-stmt-prepare.html
@@ -536,7 +572,10 @@ defmodule MyXQL.Messages do
 
   defp decode_column_definition41(data) do
     packet(payload: payload) = decode_packet(data)
+    do_decode_column_definition41(payload)
+  end
 
+  defp do_decode_column_definition41(payload) do
     <<
       3,
       "def",
@@ -572,24 +611,6 @@ defmodule MyXQL.Messages do
     {Enum.reverse(acc), rest}
   end
 
-  defp decode_text_resultset_rows(data, column_definitions) do
-    decode_text_resultset_rows(data, column_definitions, 0, [])
-  end
-
-  defp decode_text_resultset_rows(data, column_definitions, row_count, rows) do
-    packet(payload: payload) = decode_packet(data)
-
-    case payload do
-      # EOF packet
-      <<0xFE, warning_count::int(2), status_flags::int(2), 0::8*2>> ->
-        {row_count, Enum.reverse(rows), warning_count, status_flags}
-
-      _ ->
-        {row, rest} = decode_text_resultset_row(payload, column_definitions)
-        decode_text_resultset_rows(rest, column_definitions, row_count + 1, [row | rows])
-    end
-  end
-
   defp decode_text_resultset_row(data, column_definitions) do
     decode_text_resultset_row(data, column_definitions, [])
   end
@@ -597,7 +618,7 @@ defmodule MyXQL.Messages do
   # https://dev.mysql.com/doc/internals/en/com-query-response.html#packet-ProtocolText::ResultsetRow
   defp decode_text_resultset_row(data, [column_definition41(type: type) | tail], acc) do
     case data do
-      <<value_size::size(8), value::bytes-size(value_size), rest::binary>> ->
+      <<value_size::int(1), value::bytes-size(value_size), rest::binary>> ->
         decode_text_resultset_row(rest, tail, [decode_text_value(value, type) | acc])
 
       <<0xFB, rest::binary>> ->
