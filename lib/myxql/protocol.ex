@@ -26,6 +26,9 @@ defmodule MyXQL.Protocol do
 
   @handshake_recv_timeout 5_000
 
+  # https://dev.mysql.com/doc/internals/en/sending-more-than-16mbyte.html
+  @max_packet_size 16_777_215
+
   defstruct [
     :sock,
     :sock_mod,
@@ -333,8 +336,15 @@ defmodule MyXQL.Protocol do
   end
 
   def send_packet(payload, sequence_id, state) do
-    data = encode_packet(payload, sequence_id)
-    send_data(state, data)
+    case encode_packet(payload, sequence_id, @max_packet_size) do
+      {:ok, data} ->
+        send_data(state, data)
+
+      {:more, first_packet_data, rest} ->
+        with :ok <- send_data(state, first_packet_data) do
+          send_packet(rest, sequence_id + 1, state)
+        end
+    end
   end
 
   defp execute_binary(query, params, statement_id, state) do
@@ -468,7 +478,8 @@ defmodule MyXQL.Protocol do
         auth_plugin_name,
         auth_response,
         database,
-        ssl?
+        ssl?,
+        @max_packet_size
       )
 
     with :ok <- send_packet(payload, sequence_id, state) do
@@ -549,7 +560,7 @@ defmodule MyXQL.Protocol do
   end
 
   defp maybe_upgrade_to_ssl(state, true, ssl_opts, connect_timeout, database, sequence_id) do
-    payload = encode_ssl_request(database)
+    payload = encode_ssl_request(database, @max_packet_size)
 
     case send_packet(payload, sequence_id, state) do
       :ok ->

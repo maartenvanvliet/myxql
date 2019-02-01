@@ -540,6 +540,24 @@ defmodule MyXQLTest do
     end
   end
 
+  describe "large packets" do
+    setup [:connect, :truncate]
+
+    test "text queries", c do
+      size = 16_777_215 * 3
+      text = String.duplicate("1", size)
+      MyXQL.query!(c.conn, "INSERT INTO large VALUES ('#{text}')")
+      assert MyXQL.query!(c.conn, "SELECT text FROM large").rows == [[text]]
+    end
+
+    test "prepared statements", c do
+      size = 16_777_215 * 3
+      text = String.duplicate("1", size)
+      MyXQL.prepare_execute!(c.conn, "", "INSERT INTO large VALUES (?)", [text])
+      assert MyXQL.prepare_execute!(c.conn, "", "SELECT text FROM large").rows == [[text]]
+    end
+  end
+
   defp assert_start_and_killed(opts) do
     Process.flag(:trap_exit, true)
 
@@ -556,6 +574,7 @@ defmodule MyXQLTest do
 
   defp truncate(c) do
     MyXQL.query!(c.conn, "TRUNCATE TABLE integers")
+    MyXQL.query!(c.conn, "TRUNCATE TABLE large")
     c
   end
 end

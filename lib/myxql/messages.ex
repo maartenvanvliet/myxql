@@ -4,8 +4,6 @@ defmodule MyXQL.Messages do
   import MyXQL.Types
   use Bitwise
 
-  @max_packet_size 65536
-
   # https://dev.mysql.com/doc/internals/en/capability-flags.html
   @capability_flags %{
     client_long_password: 0x00000001,
@@ -115,9 +113,18 @@ defmodule MyXQL.Messages do
   # https://dev.mysql.com/doc/internals/en/mysql-packet.html
   ###########################################################
 
-  def encode_packet(payload, sequence_id) do
+  def encode_packet(payload, sequence_id, max_packet_size) do
     payload_length = IO.iodata_length(payload)
-    [<<payload_length::int(3), sequence_id::int(1)>>, payload]
+
+    if payload_length < max_packet_size do
+      {:ok, [<<payload_length::int(3), sequence_id::int(1)>>, payload]}
+    else
+      payload = IO.iodata_to_binary(payload)
+      first_payload = binary_part(payload, 0, max_packet_size)
+      rest = binary_part(payload, max_packet_size, payload_length - max_packet_size)
+      first_packet = [<<max_packet_size::int(3), sequence_id::int(1)>>, first_payload]
+      {:more, first_packet, rest}
+    end
   end
 
   # https://dev.mysql.com/doc/internals/en/packet-OK_Packet.html
@@ -222,21 +229,13 @@ defmodule MyXQL.Messages do
   end
 
   # https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeResponse
-  defrecord :handshake_response_41, [
-    :capability_flags,
-    :max_packet_size,
-    :character_set,
-    :username,
-    :auth_response,
-    :database
-  ]
-
   def encode_handshake_response_41(
         username,
         auth_plugin_name,
         auth_response,
         database,
-        ssl?
+        ssl?,
+        max_packet_size
       ) do
     capability_flags = capability_flags(database, ssl?)
     auth_response = if auth_response, do: encode_string_lenenc(auth_response), else: <<0>>
@@ -244,7 +243,7 @@ defmodule MyXQL.Messages do
 
     <<
       capability_flags::int(4),
-      @max_packet_size::int(4),
+      max_packet_size::int(4),
       character_set_name_to_code(:utf8_general_ci),
       0::int(23),
       <<username::binary, 0x00>>,
@@ -254,12 +253,12 @@ defmodule MyXQL.Messages do
     >>
   end
 
-  def encode_ssl_request(database) do
+  def encode_ssl_request(database, max_packet_size) do
     capability_flags = capability_flags(database, true)
 
     <<
       capability_flags::int(4),
-      @max_packet_size::int(4),
+      max_packet_size::int(4),
       character_set_name_to_code(:utf8_general_ci),
       0::int(23)
     >>

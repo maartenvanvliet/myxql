@@ -103,6 +103,8 @@ CREATE TABLE integers (x int);
 
 CREATE TABLE uniques (a int UNIQUE);
 
+CREATE TABLE large (text LONGTEXT);
+
 CREATE TABLE test_types (
   id SERIAL PRIMARY KEY,
   my_tinyint TINYINT,
