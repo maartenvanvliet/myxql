@@ -56,8 +56,14 @@ defmodule MyXQL.Protocol.Types do
 
   def take_string_lenenc(binary) do
     {size, rest} = take_int_lenenc(binary)
-    <<string::string(size), rest::binary>> = rest
-    {string, rest}
+
+    case rest do
+      <<string::string(size), rest::binary>> ->
+        {string, rest}
+
+      _ ->
+        :more
+    end
   end
 
   # https://dev.mysql.com/doc/internals/en/string.html#packet-Protocol::NulTerminatedString

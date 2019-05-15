@@ -8,7 +8,7 @@ defmodule MyXQL.Protocol.ValueTest do
     end
   end
 
-  for protocol <- [:text, :binary] do
+  for protocol <- [:binary] do
     @protocol protocol
 
     describe "#{@protocol} protocol" do
@@ -197,7 +197,7 @@ defmodule MyXQL.Protocol.ValueTest do
         blob = String.duplicate("a", 1_000_000)
         assert_roundtrip(c, "my_mediumblob", blob)
 
-        blob = String.duplicate("a", 16_777_000)
+        blob = String.duplicate("a", 16_777_215)
         assert_roundtrip(c, "my_mediumblob", blob)
       end
 

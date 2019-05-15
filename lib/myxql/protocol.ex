@@ -5,6 +5,8 @@ defmodule MyXQL.Protocol do
   alias MyXQL.Protocol.Values
   use Bitwise
 
+  @default_max_packet_size 16_777_215
+
   defdelegate error_code_to_name(code), to: MyXQL.Protocol.ServerErrorCodes, as: :code_to_name
 
   # https://dev.mysql.com/doc/internals/en/com-stmt-execute.html
@@ -23,7 +25,14 @@ defmodule MyXQL.Protocol do
 
   def encode_packet(payload, sequence_id) do
     payload_length = IO.iodata_length(payload)
-    [<<payload_length::uint3, sequence_id::uint1>>, payload]
+
+    if payload_length > @default_max_packet_size do
+      <<payload::string(@default_max_packet_size), rest::bits>> = IO.iodata_to_binary(payload)
+      next_sequence_id = if sequence_id < 255, do: sequence_id + 1, else: 0
+      [encode_packet(payload, sequence_id), encode_packet(rest, next_sequence_id)]
+    else
+      [<<payload_length::uint3, sequence_id::uint1>>, payload]
+    end
   end
 
   def decode_generic_response(<<0x00, rest::bits>>) do

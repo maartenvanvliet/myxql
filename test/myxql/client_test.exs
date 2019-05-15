@@ -135,8 +135,28 @@ defmodule MyXQL.ClientTest do
     setup :connect
 
     test "simple query", %{state: state} do
-      {:ok, resultset(rows: rows)} = Client.com_query("SELECT 1024 as a, 2048 as b", state)
-      assert rows == [[1024, 2048]]
+      # {:ok, resultset(rows: rows)} = Client.com_query("SELECT 1024 as a, 2048 as b", state)
+      # assert rows == [[1024, 2048]]
+
+      {:ok, ok_packet()} = Client.com_query("CREATE TEMPORARY TABLE texts (x longblob)", state)
+      v = String.duplicate("a", 50_000_000)
+      {:ok, ok_packet()} = Client.com_query("INSERT INTO texts VALUES ('#{v}')", state)
+
+      # :ok = Client.send_com({:com_query, "SELECT x FROM texts"}, state)
+
+      # Client.recv_packets(fn payload, next_data, decoder_state ->
+      #   dbg byte_size(payload)
+      #   dbg payload
+
+      #   if match?(<<254, 0, 0, 34, 0>>, payload) do
+      #     {:halt, :ok}
+      #   else
+      #     {:cont, decoder_state}
+      #   end
+      # end, :initial, state)
+
+      {:ok, resultset(rows: [[v2]])} = Client.com_query("SELECT x FROM texts", state)
+      assert v2 == v
     end
   end
 

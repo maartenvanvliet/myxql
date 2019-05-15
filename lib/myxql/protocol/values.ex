@@ -69,9 +69,10 @@ defmodule MyXQL.Protocol.Values do
   end
 
   defp decode_text_row(<<values::binary>>, [type | tail], acc) do
-    {string, rest} = take_string_lenenc(values)
-    value = decode_text_value(string, type)
-    decode_text_row(rest, tail, [value | acc])
+    with {string, rest} <- take_string_lenenc(values) do
+      value = decode_text_value(string, type)
+      decode_text_row(rest, tail, [value | acc])
+    end
   end
 
   defp decode_text_row("", _column_type, acc) do
@@ -489,6 +490,12 @@ defmodule MyXQL.Protocol.Values do
 
   defp decode_string_lenenc(<<0xFE, n::uint8, v::string(n), r::bits>>, null_bitmap, t, acc),
     do: decode_binary_row(r, null_bitmap >>> 1, t, [v | acc])
+
+  defp decode_string_lenenc(<<253, n::uint3, rest::bits>>, _, _, _) do
+    dbg(n)
+    dbg(byte_size(rest))
+    raise "foo"
+  end
 
   defp decode_json(<<n::uint1, v::string(n), r::bits>>, null_bitmap, t, acc) when n < 251,
     do: decode_binary_row(r, null_bitmap >>> 1, t, [decode_json(v) | acc])
