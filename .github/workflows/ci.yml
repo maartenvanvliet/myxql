@@ -42,6 +42,4 @@ jobs:
           mix local.rebar --force
           mix local.hex --force
           mix deps.get
-      - run: |
-          sudo service mysql stop
-          scripts/ci.sh
+      - run: mix test
