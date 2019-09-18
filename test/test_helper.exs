@@ -198,6 +198,7 @@ defmodule TestHelper do
     args = ~w(
         --protocol=tcp
         --user=root
+        --hostname=mysql
       ) ++ ["-e", sql]
 
     cmd(["mysql" | args], options)
