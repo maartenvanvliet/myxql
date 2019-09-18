@@ -1,6 +1,6 @@
 name: Elixir CI
 
-on: push
+on: [push, pull_request]
 
 jobs:
   build:
@@ -18,3 +18,30 @@ jobs:
         mix deps.get
     - name: Run formatter
       run: mix format --check-formatted
+
+  test-mysql:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:${{ matrix.mysql_version }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    container: elixir:1.9-slim
+
+    strategy:
+      matrix:
+        mysql_version: ["5.6", "5.7", "8.0"]
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install Dependencies
+        run: |
+          mix local.rebar --force
+          mix local.hex --force
+          mix deps.get
+      - run: |
+          sudo service mysql stop
+          scripts/ci.sh
