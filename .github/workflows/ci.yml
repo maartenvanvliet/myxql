@@ -37,6 +37,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v1
+      - name: Install MySQL Client
+        run: |
+          echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-${{ matrix.mysql_version }}" >> /etc/apt/sources.list.d/mysql.list
+          apt-get update
+          apt-get install --allow-unauthenticated -y mysql-client
+          mysql --version
       - name: Install Dependencies
         run: |
           mix local.rebar --force
